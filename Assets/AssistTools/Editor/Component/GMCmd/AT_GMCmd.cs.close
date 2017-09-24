@@ -1,0 +1,28 @@
+﻿using UnityEngine;
+using UnityEditor;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using System.Reflection;
+
+public class AT_GMCmd : AT_Base
+{
+    public List<string> m_lsCSVPath = new List<string>() { };
+    public List<KeyValuePair<string, string>> m_lsCSVFile = new List<KeyValuePair<string, string>>();
+
+    public AT_GMCmd()
+        : base(-100, ToolType.GameDebugger, "GM指令")
+    {
+
+    }
+
+    public override void OnGUI()
+    {
+        if (!CheckRunning() || !ClientAPP.Instance) return;
+        GUILayout.BeginHorizontal(EditorStyles.objectFieldThumb);
+        ClientAPP.Instance.m_bStopAI = GUILayout.Toggle(ClientAPP.Instance.m_bStopAI, "暂停AI", GUILayout.Width(150));
+        UserConfig.Instance.m_bNeedCheckCD = GUILayout.Toggle(UserConfig.Instance.m_bNeedCheckCD, "检测CD", GUILayout.Width(150));
+        GUILayout.EndHorizontal();
+    }
+}

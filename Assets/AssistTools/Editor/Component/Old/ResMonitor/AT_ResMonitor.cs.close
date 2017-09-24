@@ -1,0 +1,208 @@
+﻿using UnityEngine;
+using UnityEditor;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using System.Reflection;
+using System.Linq;
+
+public class AT_ResMonitor : AT_Base
+{
+    public List<string> m_lsCSVPath = new List<string>() { };
+    public List<KeyValuePair<string, string>> m_lsCSVFile = new List<KeyValuePair<string, string>>();
+    private int m_iListViewID = ATGUILib.GenerateGroupID();
+
+    private const string c_sConfig_RecordName = "RecordName";
+    private List<string> m_lsSavedRecord = new List<string>();
+    private StringBuilder m_sb;
+    private List<UT_PrefabPoolManager.ResUseRecord> m_lsLoadRecord;
+
+    public AT_ResMonitor() : base(3, ToolType.GameDebugger, "资源监视器") { }
+    private string[] m_lsProperty = { "资源", "类型", "当前数目", "最大数目", "实例化数目", "使用百分比" };
+    private float[] m_lsWidthScale = { 1.9f, 1.3f, 0.7f, 0.7f, 0.7f, 0.7f };
+    private int m_iSort = 1;
+    private bool m_bDesc = true;
+    private string sRecordName = "----设置记录名----";
+
+    public override void Init()
+    {
+        string sInfo = "";
+        if (GetConfig<string>(c_sConfig_RecordName, ref sInfo))
+        {
+            m_lsSavedRecord = new List<string>(sInfo.Split(ATDefine.SplitChar));
+        }
+        m_sb = new StringBuilder(10000);
+    }
+
+    #region GUI
+    public override void OnGUI()
+    {
+        Draw_ListView();
+        GUILayout.Space(5);
+        Draw_RecordManager();
+    }
+
+    private void Draw_ListView()
+    {
+        float fWidth = (AT_Center.Instance.position.width - 87) / m_lsProperty.Length;
+
+        GUILayout.BeginHorizontal(EditorStyles.objectFieldThumb);
+        GUI.contentColor = ATGUILib.EnhanceColor(Color.green);
+        for (int i = 0; i < m_lsProperty.Length; ++i)
+        {
+            if (GUILayout.Button(m_lsProperty[i], EditorStyles.toolbarButton, GUILayout.Width(fWidth * m_lsWidthScale[i] + 4)))
+            {
+                if (m_iSort != i)
+                {
+                    m_iSort = i;
+                    m_bDesc = true;
+                }
+                else m_bDesc = !m_bDesc;
+            }
+            //GUILayout.Space(3);
+        }
+        GUI.contentColor = Color.white;
+        GUILayout.EndHorizontal();
+
+        IEnumerable<UT_PrefabPoolManager.ResUseRecord> res = UT_PrefabPoolManager.Instance.m_dicResUseInfo.Values;
+        if (m_lsLoadRecord != null && UT_PrefabPoolManager.Instance.m_dicResUseInfo.Count == 0)
+            res = m_lsLoadRecord;
+        List<UT_PrefabPoolManager.ResUseRecord> result = Sort(res);
+
+        using (var sv = new ATGUILib.ScorllView(m_iListViewID))
+        {
+            for (int i = 0; i < result.Count; ++i)
+            {
+                using (var h = new ATGUILib.H(EditorStyles.objectFieldThumb))
+                {
+                    if (result[i].MaxUseCount > result[i].PreInstanceCount) GUI.contentColor = ATGUILib.EnhanceColor(Color.red);
+                    EditorGUILayout.TextField(result[i].ResName, EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[0]));
+                    EditorGUILayout.TextField(result[i].ResType.ToString(), EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[1]));
+                    EditorGUILayout.TextField(result[i].CurrentUseCount.ToString(), EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[2]));
+                    EditorGUILayout.TextField(result[i].MaxUseCount.ToString(), EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[3]));
+                    EditorGUILayout.TextField(result[i].PreInstanceCount.ToString(), EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[4]));
+
+                    EditorGUILayout.TextField(string.Format("{0:N2}", ((float)result[i].MaxUseCount / result[i].PreInstanceCount)), EditorStyles.textField, GUILayout.Width(fWidth * m_lsWidthScale[5]));
+                    GUI.contentColor = Color.white;
+                }
+            }
+        }
+
+        GUILayout.Space(5);
+
+        GUILayout.BeginHorizontal(EditorStyles.objectFieldThumb);
+        sRecordName = GUILayout.TextField(sRecordName);
+        GUI.contentColor = ATGUILib.EnhanceColor(Color.white);
+        ATGUILib.ChangeableButton("保存记录", UT_PrefabPoolManager.Instance && UT_PrefabPoolManager.Instance.m_dicResUseInfo.Count > 0, SaveFile, result, 100);
+        GUI.contentColor = Color.white;
+        GUILayout.EndHorizontal();
+    }
+
+    private void Draw_RecordManager()
+    {
+        for (int i = 0; i < m_lsSavedRecord.Count; ++i)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.TextField(m_lsSavedRecord[i]);
+            if (GUILayout.Button("载入", GUILayout.Width(50)))
+            {
+                LoadRecord(m_lsSavedRecord[i]);
+            }
+            if (GUILayout.Button("-", GUILayout.Width(30)))
+            {
+                RemoveConfig<string>(m_lsSavedRecord[i]);
+                m_lsSavedRecord.Remove(m_lsSavedRecord[i]);
+                SaveRecord(false);
+                GUILayout.EndHorizontal();
+                return;
+            }
+            GUILayout.EndHorizontal();
+        }
+    }
+    #endregion
+
+
+    #region Assist Func
+    private List<UT_PrefabPoolManager.ResUseRecord> Sort(IEnumerable<UT_PrefabPoolManager.ResUseRecord> res)
+    {
+        List<UT_PrefabPoolManager.ResUseRecord> result;
+        if (m_bDesc)
+        {
+            switch (m_iSort)
+            {
+                case 0: result = res.OrderByDescending(a => a.ResName).ToList(); break;
+                case 1: result = res.OrderByDescending(a => a.ResType).ToList(); break;
+                case 2: result = res.OrderByDescending(a => a.CurrentUseCount).ToList(); break;
+                case 3: result = res.OrderByDescending(a => a.MaxUseCount).ToList(); break;
+                case 4: result = res.OrderByDescending(a => a.PreInstanceCount).ToList(); break;
+                default: result = res.OrderByDescending(a => (float)a.MaxUseCount / a.PreInstanceCount).ThenByDescending(a => a.PreInstanceCount).ToList(); break;
+            }
+        }
+        else
+        {
+            switch (m_iSort)
+            {
+                case 0: result = res.OrderBy(a => a.ResName).ToList(); break;
+                case 1: result = res.OrderBy(a => a.ResType).ToList(); break;
+                case 2: result = res.OrderBy(a => a.CurrentUseCount).ToList(); break;
+                case 3: result = res.OrderBy(a => a.MaxUseCount).ToList(); break;
+                case 4: result = res.OrderBy(a => a.PreInstanceCount).ToList(); break;
+                default: result = res.OrderBy(a => (float)a.MaxUseCount / a.PreInstanceCount).ThenByDescending(a => a.PreInstanceCount).ToList(); break;
+            }
+        }
+
+        return result;
+    }
+
+    protected void SaveRecord(bool bAdd)
+    {
+        if (bAdd)
+        {
+            sRecordName = "记录_" + sRecordName;
+            if (m_lsSavedRecord.Contains(sRecordName)) sRecordName = sRecordName + "_New";
+            m_lsSavedRecord.Add(sRecordName);
+            m_sb.Length = 0;
+        }
+
+        for (int i = 0; i < m_lsSavedRecord.Count; ++i)
+        {
+            m_sb.Append(m_lsSavedRecord[i]);
+            if (i != m_lsSavedRecord.Count - 1)
+                m_sb.Append(ATDefine.SplitChar);
+        }
+        SetConfig<string>(c_sConfig_RecordName, m_sb.ToString());
+    }
+
+    private void SaveFile(object a)
+    {
+        SaveRecord(true);
+
+        List<UT_PrefabPoolManager.ResUseRecord> lsReecord = a as List<UT_PrefabPoolManager.ResUseRecord>;
+
+        m_sb.Length = 0;
+        foreach (var d in lsReecord)
+        {
+            m_sb.Append(d.ResName).Append(ATDefine.SplitChar).Append(d.ResType).Append(ATDefine.SplitChar).Append(d.CurrentUseCount).Append(ATDefine.SplitChar).
+                Append(d.MaxUseCount).Append(ATDefine.SplitChar).Append(d.PreInstanceCount).Append(ATDefine.SplitChar);
+        }
+        if (m_sb[m_sb.Length - 1] == ATDefine.SplitChar)
+            m_sb.Remove(m_sb.Length - 1, 1);
+        SetConfig<string>(sRecordName, m_sb.ToString());
+    }
+
+    private void LoadRecord(string sName)
+    {
+        m_lsLoadRecord = new List<UT_PrefabPoolManager.ResUseRecord>();
+        string s = "";
+        GetConfig<string>(sName, ref s);
+        var e = s.Split(ATDefine.SplitChar);
+        int iCount = e.Length / 5;
+        for (int i = 0; i < iCount; i++)
+        {
+            m_lsLoadRecord.Add(new UT_PrefabPoolManager.ResUseRecord(e[5 * i], (UT_PrefabPoolManager.PrefabType)Enum.Parse(typeof(UT_PrefabPoolManager.PrefabType),
+                e[5 * i + 1]), int.Parse(e[5 * i + 2]), int.Parse(e[5 * i + 3]), int.Parse(e[5 * i + 4])));
+        }
+    }
+    #endregion
+}

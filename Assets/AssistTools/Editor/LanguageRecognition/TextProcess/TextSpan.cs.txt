@@ -1,0 +1,110 @@
+﻿public struct TextOffset
+{
+    public int lines;
+    public int indexOffset;
+}
+
+public struct TextSpan
+{
+    public int line;
+    public int index;
+    public int lineOffset;
+    public int indexOffset;
+
+    public override string ToString()
+    {
+        return "TextSpan{ line = " + (line + 1) + ", fromChar = " + index + ", lineOffset = " + lineOffset + ", toChar = " + indexOffset + " }";
+    }
+
+    public static TextSpan CreateEmpty(TextPosition position)
+    {
+        return new TextSpan { line = position.line, index = position.index };
+    }
+
+    public static TextSpan Create(TextPosition from, TextPosition to)
+    {
+        return new TextSpan
+        {
+            line = from.line,
+            index = from.index,
+            lineOffset = to.line - from.line,
+            indexOffset = to.index - (to.line == from.line ? from.index : 0)
+        };
+    }
+
+    public static TextSpan CreateBetween(TextSpan from, TextSpan to)
+    {
+        return Create(from.EndPosition, to.StartPosition);
+    }
+
+    public static TextSpan CreateEnclosing(TextSpan from, TextSpan to)
+    {
+        return Create(from.StartPosition, to.EndPosition);
+    }
+
+    public static TextSpan Create(TextPosition start, TextOffset length)
+    {
+        return new TextSpan
+        {
+            line = start.line,
+            index = start.index,
+            lineOffset = length.lines,
+            indexOffset = length.indexOffset
+        };
+    }
+
+    public TextPosition StartPosition
+    {
+        get { return new TextPosition { line = line, index = index }; }
+        set
+        {
+            if (value.line == line + lineOffset)
+            {
+                line = value.line;
+                lineOffset = 0;
+                indexOffset = index + indexOffset - value.index;
+                index = value.index;
+            }
+            else
+            {
+                lineOffset = line + lineOffset - value.line;
+                line = value.line;
+                index = value.index;
+            }
+        }
+    }
+
+    public TextPosition EndPosition
+    {
+        get { return new TextPosition { line = line + lineOffset, index = indexOffset + (lineOffset == 0 ? index : 0) }; }
+        set
+        {
+            if (value.line == line)
+            {
+                lineOffset = 0;
+                indexOffset = value.index - index;
+            }
+            else
+            {
+                lineOffset = value.line - line;
+                indexOffset = value.index;
+            }
+        }
+    }
+
+    public void Offset(int deltaLines, int deltaIndex)
+    {
+        line += deltaLines;
+        index += deltaIndex;
+    }
+
+    public bool Contains(TextPosition position)
+    {
+        return !(position.line < line
+            || position.line == line && (position.index < index || lineOffset == 0 && position.index > index + indexOffset)
+            || position.line > line + lineOffset
+            || position.line == line + lineOffset && position.index > indexOffset);
+    }
+}
+
+

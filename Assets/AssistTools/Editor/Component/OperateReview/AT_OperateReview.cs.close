@@ -1,0 +1,71 @@
+﻿/************************************************************************/
+/*                     Author：qcr                                      */
+/************************************************************************/ 
+using UnityEngine;
+using UnityEditor;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using System.Reflection;
+using System.Diagnostics;
+
+public class AT_OperateReview : AT_Base
+{
+    public AT_OperateReview() : base(3, ToolType.GameDebugger, "操作回放") { }
+    private bool m_bPlay = false;
+    private float m_fPlayTime = 0;
+    private int m_iPlayedIndex = 0;
+
+    public override void OnGUI()
+    {
+        try
+        {
+            var gp = ClientAPP.Instance.m_kGamePlayer;
+            using (var h = new ATGUILib.H())
+            {
+                ATGUILib.ChangeableButton("录制", !m_bPlay && !gp.OperateRecord,
+               a => (a as LC_ActorBase).OperateRecord = true, gp);
+                ATGUILib.ChangeableButton("停止", !m_bPlay && gp.OperateRecord,
+                    a => (a as LC_ActorBase).OperateRecord = false, gp);
+            }
+
+            using (var h = new ATGUILib.H())
+            {
+                ATGUILib.ChangeableButton("播放", !gp.OperateRecord && gp.m_lsRecordOperate.Count > 0,
+               a => { m_fPlayTime = UT_TimeManager.Instance.GetProcessTime(); m_bPlay = true; m_iPlayedIndex = 0; },gp);
+                ATGUILib.ChangeableButton("停止", !gp.OperateRecord && m_bPlay,
+                    a => m_bPlay = false);
+            }
+        }
+        catch (System.Exception)
+        {
+            GUILayout.Label("-----请先正常进入战斗-----", EditorStyles.boldLabel);
+            m_bPlay = false;
+        }
+    }
+
+    public override void OnUpdate()
+    {
+        try
+        {
+            if (!m_bPlay) return;
+            var gp = ClientAPP.Instance.m_kGamePlayer;
+            float fOffsetTime = UT_TimeManager.Instance.GetProcessTime() - m_fPlayTime;
+            while (gp.m_lsRecordOperate.Count > m_iPlayedIndex)
+            {
+                if (gp.m_lsRecordOperate[m_iPlayedIndex].m_fTime < fOffsetTime)
+                {
+                    gp.PlayRecord(gp.m_lsRecordOperate[m_iPlayedIndex]);
+                    m_iPlayedIndex++;
+                }
+                else break;
+            }
+            if (gp.m_lsRecordOperate.Count <= m_iPlayedIndex) m_bPlay = false;
+        }
+        catch (System.Exception)
+        {
+            m_bPlay = false;
+        }
+    }
+}

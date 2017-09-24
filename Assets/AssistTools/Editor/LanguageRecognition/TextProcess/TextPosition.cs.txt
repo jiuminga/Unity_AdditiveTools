@@ -1,0 +1,123 @@
+﻿public struct TextPosition
+{
+    public int line;
+    public int index;
+
+    public TextPosition(int line, int index)
+    {
+        this.line = line;
+        this.index = index;
+    }
+
+    public static TextPosition operator +(TextPosition other, int offset)
+    {
+        return new TextPosition { line = other.line, index = other.index + offset };
+    }
+
+    public static bool operator ==(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line == rhs.line && lhs.index == rhs.index;
+    }
+
+    public static bool operator !=(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line != rhs.line || lhs.index != rhs.index;
+    }
+
+    public static bool operator <(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line < rhs.line || lhs.line == rhs.line && lhs.index < rhs.index;
+    }
+
+    public static bool operator <=(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line < rhs.line || lhs.line == rhs.line && lhs.index <= rhs.index;
+    }
+
+    public static bool operator >(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line > rhs.line || lhs.line == rhs.line && lhs.index > rhs.index;
+    }
+
+    public static bool operator >=(TextPosition lhs, TextPosition rhs)
+    {
+        return lhs.line > rhs.line || lhs.line == rhs.line && lhs.index >= rhs.index;
+    }
+
+    public override bool Equals(object obj)
+    {
+        if (!(obj is TextPosition))
+            return false;
+
+        var rhs = (TextPosition)obj;
+        return line == rhs.line && index == rhs.index;
+    }
+
+    public override int GetHashCode()
+    {
+        unchecked // Overflow is fine, just wrap
+        {
+            var hash = (int)2166136261;
+            hash = hash * 16777619 ^ line.GetHashCode();
+            hash = hash * 16777619 ^ index.GetHashCode();
+            return hash;
+        }
+    }
+
+    public bool Move(EditorFileBuffer textBuffer, int offset)
+    {
+        while (offset > 0)
+        {
+            var lineLength = textBuffer.lines[line].Length;
+            if (index + offset <= lineLength)
+            {
+                index += offset;
+                if (index == lineLength)
+                {
+                    index = 0;
+                    ++line;
+                }
+                return true;
+            }
+
+            offset -= lineLength - index;
+            ++line;
+            index = 0;
+
+            if (line >= textBuffer.lines.Count)
+            {
+                line = textBuffer.lines.Count;
+                index = 0;
+                return false;
+            }
+        }
+
+        while (offset < 0)
+        {
+            if (index + offset >= 0)
+            {
+                index += offset;
+                return true;
+            }
+
+            offset += index;
+            --line;
+            if (line < 0)
+            {
+                line = 0;
+                index = 0;
+                return false;
+            }
+            index = textBuffer.lines[line].Length;
+        }
+
+        return true;
+    }
+
+    public override string ToString()
+    {
+        return "TextPosition (line: " + line + ", index: " + index + ")";
+    }
+}
+
+
